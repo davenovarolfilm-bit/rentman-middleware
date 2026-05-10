@@ -12,6 +12,28 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================
+// SECURITY
+// ==========================
+
+const checkApiKey = (req, res, next) => {
+  const apiKey = req.headers["x-api-key"];
+
+  if (!process.env.MIDDLEWARE_API_KEY) {
+    return res.status(500).json({
+      error: "MIDDLEWARE_API_KEY non configurata su Render",
+    });
+  }
+
+  if (apiKey !== process.env.MIDDLEWARE_API_KEY) {
+    return res.status(401).json({
+      error: "Accesso non autorizzato",
+    });
+  }
+
+  next();
+};
+
+// ==========================
 // RENTMAN
 // ==========================
 
@@ -49,7 +71,7 @@ app.get("/health", (req, res) => {
 // GET EQUIPMENT
 // ==========================
 
-app.get("/equipment", async (req, res) => {
+app.get("/equipment", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.get("/equipment", {
       params: {
@@ -71,7 +93,7 @@ app.get("/equipment", async (req, res) => {
 // CREATE EQUIPMENT
 // ==========================
 
-app.post("/equipment", async (req, res) => {
+app.post("/equipment", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.post("/equipment", req.body);
 
@@ -88,7 +110,7 @@ app.post("/equipment", async (req, res) => {
 // GET CONTACTS
 // ==========================
 
-app.get("/contacts", async (req, res) => {
+app.get("/contacts", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.get("/contacts", {
       params: {
@@ -110,7 +132,7 @@ app.get("/contacts", async (req, res) => {
 // GET PROJECTS
 // ==========================
 
-app.get("/projects", async (req, res) => {
+app.get("/projects", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.get("/projects", {
       params: {
@@ -132,10 +154,10 @@ app.get("/projects", async (req, res) => {
 // WOOCOMMERCE PRODUCTS
 // ==========================
 
-app.get("/woocommerce-products", async (req, res) => {
+app.get("/woocommerce-products", checkApiKey, async (req, res) => {
   try {
     const response = await WooCommerce.get("products", {
-      per_page: 20,
+      per_page: req.query.per_page || 20,
     });
 
     res.json(response.data);
@@ -151,10 +173,10 @@ app.get("/woocommerce-products", async (req, res) => {
 // IMPORT WOOCOMMERCE → RENTMAN
 // ==========================
 
-app.post("/import-woocommerce-products", async (req, res) => {
+app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
   try {
     const products = await WooCommerce.get("products", {
-      per_page: 20,
+      per_page: req.body.per_page || 20,
     });
 
     const imported = [];

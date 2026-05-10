@@ -34,6 +34,29 @@ const checkApiKey = (req, res, next) => {
 };
 
 // ==========================
+// HELPERS
+// ==========================
+
+const cleanHtml = (html = "") => {
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#8217;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const parsePrice = (value) => {
+  const price = parseFloat(value || 0);
+  return Number.isNaN(price) ? 0 : price;
+};
+
+const namesToString = (items = []) => {
+  return items.map((item) => item.name).filter(Boolean).join(", ");
+};
+
+// ==========================
 // RENTMAN
 // ==========================
 
@@ -96,11 +119,10 @@ app.get("/equipment", checkApiKey, async (req, res) => {
 app.post("/equipment", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.post("/equipment", req.body);
-
     res.json(response.data);
   } catch (error) {
     res.status(error.response?.status || 500).json({
-      error: "Errore creazione prodotto",
+      error: "Errore creazione prodotto Rentman",
       details: error.response?.data || error.message,
     });
   }
@@ -122,7 +144,7 @@ app.get("/contacts", checkApiKey, async (req, res) => {
     res.json(response.data);
   } catch (error) {
     res.status(error.response?.status || 500).json({
-      error: "Errore lettura contatti",
+      error: "Errore lettura contatti Rentman",
       details: error.response?.data || error.message,
     });
   }
@@ -144,7 +166,7 @@ app.get("/projects", checkApiKey, async (req, res) => {
     res.json(response.data);
   } catch (error) {
     res.status(error.response?.status || 500).json({
-      error: "Errore lettura progetti",
+      error: "Errore lettura progetti Rentman",
       details: error.response?.data || error.message,
     });
   }
@@ -158,12 +180,13 @@ app.get("/woocommerce-products", checkApiKey, async (req, res) => {
   try {
     const response = await WooCommerce.get("products", {
       per_page: req.query.per_page || 20,
+      page: req.query.page || 1,
     });
 
     res.json(response.data);
   } catch (error) {
     res.status(500).json({
-      error: "Errore WooCommerce",
+      error: "Errore lettura prodotti WooCommerce",
       details: error.response?.data || error.message,
     });
   }
@@ -175,27 +198,95 @@ app.get("/woocommerce-products", checkApiKey, async (req, res) => {
 
 app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
   try {
-    const products = await WooCommerce.get("products", {
-      per_page: req.body.per_page || 20,
+    const perPage = req.body.per_page || 20;
+    const page = req.body.page || 1;
+
+    const wooResponse = await WooCommerce.get("products", {
+      per_page: perPage,
+      page,
     });
 
+    const rentmanExisting = await rentman.get("/equipment", {
+      params: {
+        limit: 300,
+        offset: 0,
+      },
+    });
+
+    const existingCodes = new Set(
+      (rentmanExisting.data.data || [])
+        .map((item) => item.code)
+        .filter(Boolean)
+    );
+
     const imported = [];
+    const skipped = [];
+    const errors = [];
 
-    for (const product of products.data) {
+    for (const product of wooResponse.data) {
+      const code = product.sku || `WC-${product.id}`;
+      const categories = namesToString(product.categories);
+      const tags = namesToString(product.tags);
+
+      if (existingCodes.has(code)) {
+        skipped.push({
+          woo_id: product.id,
+          woo_product: product.name,
+          code,
+          reason: "Prodotto già presente in Rentman",
+        });
+        continue;
+      }
+
       try {
-        const created = await rentman.post("/equipment", {
+        const payload = {
           name: product.name,
-          code: product.sku || `WC-${product.id}`,
-          internal_remark: product.short_description || "",
-        });
+          code,
+
+          internal_remark:
+            cleanHtml(product.description) ||
+            cleanHtml(product.short_description) ||
+            "",
+
+          external_remark: categories,
+
+          price: parsePrice(product.price),
+          list_price: parsePrice(product.regular_price || product.price),
+
+          shop_description_short: cleanHtml(product.short_description),
+          shop_description_long: cleanHtml(product.description),
+
+          shop_seo_title: product.name,
+          shop_seo_keyword: categories,
+
+          tags,
+
+          type: "item",
+          rental_sales: "Rental",
+          stock_management: "Track stock",
+          in_shop: true,
+        };
+
+        const created = await rentman.post("/equipment", payload);
 
         imported.push({
+          woo_id: product.id,
           woo_product: product.name,
-          rentman_id: created.data.data?.[0]?.id || created.data.id,
+          code,
+          price: payload.price,
+          list_price: payload.list_price,
+          categories,
+          tags,
+          rentman_id: created.data.data?.[0]?.id || created.data.id || null,
+          status: "imported",
         });
+
+        existingCodes.add(code);
       } catch (err) {
-        imported.push({
+        errors.push({
+          woo_id: product.id,
           woo_product: product.name,
+          code,
           error: err.response?.data || err.message,
         });
       }
@@ -203,10 +294,18 @@ app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
 
     res.json({
       success: true,
+      requested_page: page,
+      per_page: perPage,
+      imported_count: imported.length,
+      skipped_count: skipped.length,
+      error_count: errors.length,
       imported,
+      skipped,
+      errors,
     });
   } catch (error) {
     res.status(500).json({
+      success: false,
       error: "Errore import WooCommerce → Rentman",
       details: error.response?.data || error.message,
     });

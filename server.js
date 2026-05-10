@@ -116,6 +116,28 @@ app.get("/equipment", checkApiKey, async (req, res) => {
 });
 
 // ==========================
+// GET FOLDERS
+// ==========================
+
+app.get("/folders", checkApiKey, async (req, res) => {
+  try {
+    const response = await rentman.get("/folders", {
+      params: {
+        limit: req.query.limit || 100,
+        offset: req.query.offset || 0,
+      },
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    res.status(error.response?.status || 500).json({
+      error: "Errore lettura cartelle Rentman",
+      details: error.response?.data || error.message,
+    });
+  }
+});
+
+// ==========================
 // GET WOOCOMMERCE PRODUCTS
 // ==========================
 

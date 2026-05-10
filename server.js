@@ -11,10 +11,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ==========================
 // SECURITY
-// ==========================
-
 const checkApiKey = (req, res, next) => {
   const apiKey = req.headers["x-api-key"];
 
@@ -33,12 +30,9 @@ const checkApiKey = (req, res, next) => {
   next();
 };
 
-// ==========================
 // HELPERS
-// ==========================
-
 const cleanHtml = (html = "") => {
-  return html
+  return String(html)
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&#8217;/g, "'")
@@ -56,10 +50,7 @@ const namesToString = (items = []) => {
   return items.map((item) => item.name).filter(Boolean).join(", ");
 };
 
-// ==========================
 // RENTMAN
-// ==========================
-
 const rentman = axios.create({
   baseURL: "https://api.rentman.net",
   headers: {
@@ -68,10 +59,7 @@ const rentman = axios.create({
   },
 });
 
-// ==========================
 // WOOCOMMERCE
-// ==========================
-
 const WooCommerce = new WooCommerceRestApi({
   url: process.env.WOOCOMMERCE_URL,
   consumerKey: process.env.WOOCOMMERCE_CONSUMER_KEY,
@@ -79,10 +67,7 @@ const WooCommerce = new WooCommerceRestApi({
   version: "wc/v3",
 });
 
-// ==========================
-// HEALTH CHECK
-// ==========================
-
+// HEALTH
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -90,10 +75,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// ==========================
 // GET EQUIPMENT
-// ==========================
-
 app.get("/equipment", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.get("/equipment", {
@@ -112,10 +94,7 @@ app.get("/equipment", checkApiKey, async (req, res) => {
   }
 });
 
-// ==========================
 // CREATE EQUIPMENT
-// ==========================
-
 app.post("/equipment", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.post("/equipment", req.body);
@@ -128,10 +107,7 @@ app.post("/equipment", checkApiKey, async (req, res) => {
   }
 });
 
-// ==========================
 // GET CONTACTS
-// ==========================
-
 app.get("/contacts", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.get("/contacts", {
@@ -150,10 +126,7 @@ app.get("/contacts", checkApiKey, async (req, res) => {
   }
 });
 
-// ==========================
 // GET PROJECTS
-// ==========================
-
 app.get("/projects", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.get("/projects", {
@@ -172,10 +145,7 @@ app.get("/projects", checkApiKey, async (req, res) => {
   }
 });
 
-// ==========================
 // WOOCOMMERCE PRODUCTS
-// ==========================
-
 app.get("/woocommerce-products", checkApiKey, async (req, res) => {
   try {
     const response = await WooCommerce.get("products", {
@@ -192,10 +162,7 @@ app.get("/woocommerce-products", checkApiKey, async (req, res) => {
   }
 });
 
-// ==========================
 // IMPORT WOOCOMMERCE → RENTMAN
-// ==========================
-
 app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
   try {
     const perPage = req.body.per_page || 20;
@@ -226,7 +193,6 @@ app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
     for (const product of wooResponse.data) {
       const code = product.sku || `WC-${product.id}`;
       const categories = namesToString(product.categories);
-      const tags = namesToString(product.tags);
 
       if (existingCodes.has(code)) {
         skipped.push({
@@ -239,32 +205,20 @@ app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
       }
 
       try {
+        const description =
+          cleanHtml(product.description) ||
+          cleanHtml(product.short_description) ||
+          "";
+
         const payload = {
           name: product.name,
           code,
-
-          internal_remark:
-            cleanHtml(product.description) ||
-            cleanHtml(product.short_description) ||
-            "",
-
+          internal_remark: description,
           external_remark: categories,
-
           price: parsePrice(product.price),
           list_price: parsePrice(product.regular_price || product.price),
-
-          shop_description_short: cleanHtml(product.short_description),
-          shop_description_long: cleanHtml(product.description),
-
-          shop_seo_title: product.name,
-          shop_seo_keyword: categories,
-
-          tags,
-
           type: "item",
           rental_sales: "Rental",
-          stock_management: "Track stock",
-          in_shop: true,
         };
 
         const created = await rentman.post("/equipment", payload);
@@ -276,7 +230,6 @@ app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
           price: payload.price,
           list_price: payload.list_price,
           categories,
-          tags,
           rentman_id: created.data.data?.[0]?.id || created.data.id || null,
           status: "imported",
         });
@@ -312,10 +265,7 @@ app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
   }
 });
 
-// ==========================
 // START SERVER
-// ==========================
-
 app.listen(process.env.PORT || 3000, () => {
   console.log(
     "Middleware Rentman + WooCommerce attivo su porta",

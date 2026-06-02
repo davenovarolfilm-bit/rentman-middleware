@@ -293,8 +293,6 @@ app.put("/equipment/:id", checkApiKey, async (req, res) => {
 // -----------------------------------------------------------------------------
 // EQUIPMENT FILES / IMAGES
 // -----------------------------------------------------------------------------
-
-// Legge i file gia collegati a un'attrezzatura Rentman.
 app.get("/equipment/:id/files", checkApiKey, async (req, res) => {
   try {
     const { id } = req.params;
@@ -326,10 +324,6 @@ app.get("/equipment/:id/files", checkApiKey, async (req, res) => {
   }
 });
 
-// Imposta come immagine principale dell'attrezzatura un file immagine gia presente in Rentman.
-// Body accettati:
-// { "file_id": 123 }
-// { "image": "/files/123" }
 app.post("/equipment/:id/image", checkApiKey, async (req, res) => {
   try {
     const { id } = req.params;
@@ -387,7 +381,6 @@ app.post("/equipment/:id/image", checkApiKey, async (req, res) => {
   }
 });
 
-// Rimuove l'immagine principale dell'attrezzatura.
 app.delete("/equipment/:id/image", checkApiKey, async (req, res) => {
   try {
     const { id } = req.params;
@@ -415,6 +408,86 @@ app.delete("/equipment/:id/image", checkApiKey, async (req, res) => {
     res.status(err.status).json({
       success: false,
       error: "Errore rimozione immagine attrezzatura",
+      details: err.details,
+    });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// SYNC IMAGE FROM WOOCOMMERCE TO RENTMAN
+// -----------------------------------------------------------------------------
+app.post("/equipment/:id/sync-image-from-woocommerce", checkApiKey, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { woo_product_id, search } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: "Parametro obbligatorio mancante: id attrezzatura Rentman",
+      });
+    }
+
+    let wooProduct = null;
+
+    if (woo_product_id) {
+      const wooResponse = await WooCommerce.get(`products/${woo_product_id}`);
+      wooProduct = wooResponse.data;
+    } else if (search) {
+      const wooResponse = await WooCommerce.get("products", {
+        search,
+        per_page: 1,
+      });
+
+      wooProduct = wooResponse.data?.[0] || null;
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: "Devi indicare woo_product_id oppure search",
+      });
+    }
+
+    if (!wooProduct) {
+      return res.status(404).json({
+        success: false,
+        error: "Prodotto WooCommerce non trovato",
+      });
+    }
+
+    const imageUrl = wooProduct.images?.[0]?.src || null;
+
+    if (!imageUrl) {
+      return res.status(404).json({
+        success: false,
+        error: "Il prodotto WooCommerce non ha immagini",
+        woo_product: {
+          id: wooProduct.id,
+          name: wooProduct.name,
+        },
+      });
+    }
+
+    const updateResponse = await rentman.put(`/equipment/${id}`, {
+      image: imageUrl,
+    });
+
+    res.json({
+      success: true,
+      message: "Tentativo sincronizzazione immagine WooCommerce -> Rentman completato",
+      rentman_equipment_id: id,
+      woo_product: {
+        id: wooProduct.id,
+        name: wooProduct.name,
+      },
+      image_url: imageUrl,
+      updated: updateResponse.data,
+    });
+  } catch (error) {
+    const err = getAxiosError(error);
+
+    res.status(err.status).json({
+      success: false,
+      error: "Errore sincronizzazione immagine WooCommerce -> Rentman",
       details: err.details,
     });
   }

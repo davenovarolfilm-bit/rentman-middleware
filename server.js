@@ -138,7 +138,7 @@ app.get("/woocommerce-products", checkApiKey, async (req, res) => {
   }
 });
 
-app.post("/catalog/sync-woocommerce", checkApiKey, async (req, res) => {
+app.get("/catalog/sync-woocommerce", async (req, res) => {
   try {
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return res.status(500).json({

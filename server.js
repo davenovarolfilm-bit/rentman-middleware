@@ -74,16 +74,6 @@ const getFirstRentmanItem = (payload) => {
   return arr[0] || payload?.data || payload || null;
 };
 
-const normalizeFileId = (body = {}) => {
-  const raw = body.file_id || body.fileId || body.id || body.image;
-  if (!raw) return null;
-  if (typeof raw === "number") return raw;
-
-  const asString = String(raw).trim();
-  const match = asString.match(/(?:\/files\/)?(\d+)$/);
-  return match ? parseInt(match[1], 10) : null;
-};
-
 const rentman = axios.create({
   baseURL: "https://api.rentman.net",
   headers: {
@@ -120,6 +110,9 @@ app.get("/health", (req, res) => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// WOOCOMMERCE
+// -----------------------------------------------------------------------------
 app.get("/woocommerce-products", checkApiKey, async (req, res) => {
   try {
     const response = await WooCommerce.get("products", {
@@ -138,6 +131,11 @@ app.get("/woocommerce-products", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// CATALOGO OPERATIVO SUPABASE
+// Temporaneamente pubblico per import iniziale.
+// Dopo l'import lo richiudiamo con checkApiKey.
+// -----------------------------------------------------------------------------
 app.get("/catalog/sync-woocommerce", async (req, res) => {
   try {
     if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -147,19 +145,24 @@ app.get("/catalog/sync-woocommerce", async (req, res) => {
       });
     }
 
-    const perPage = toPositiveInt(req.body.per_page, 100, 100);
-    let page = toPositiveInt(req.body.page, 1);
+    const perPage = toPositiveInt(req.query.per_page, 100, 100);
+    let page = toPositiveInt(req.query.page, 1);
+    const maxPages = toPositiveInt(req.query.max_pages, 100, 300);
+
     let totalImported = 0;
     const imported = [];
 
-    while (true) {
+    while (page <= maxPages) {
       const wooResponse = await WooCommerce.get("products", {
         per_page: perPage,
         page,
       });
 
       const products = wooResponse.data || [];
-      if (!products.length) break;
+
+      if (!products.length) {
+        break;
+      }
 
       for (const product of products) {
         const payload = {
@@ -178,13 +181,93 @@ app.get("/catalog/sync-woocommerce", async (req, res) => {
           .select()
           .single();
 
-        if (error) throw error;
+        if (error) {
+          throw error;
+        }
 
         imported.push(data);
         totalImported += 1;
       }
 
-      if (products.length < perPage) break;
+      if (products.length < perPage) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    res.json({
+      success: true,
+      message: "Catalogo WooCommerce sincronizzato su Supabase",
+      imported_count: totalImported,
+      data: imported,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Errore sincronizzazione catalogo WooCommerce -> Supabase",
+      details: error.message || error,
+    });
+  }
+});
+
+app.post("/catalog/sync-woocommerce", checkApiKey, async (req, res) => {
+  try {
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return res.status(500).json({
+        success: false,
+        error: "Supabase non configurato",
+      });
+    }
+
+    const perPage = toPositiveInt(req.body.per_page, 100, 100);
+    let page = toPositiveInt(req.body.page, 1);
+    const maxPages = toPositiveInt(req.body.max_pages, 100, 300);
+
+    let totalImported = 0;
+    const imported = [];
+
+    while (page <= maxPages) {
+      const wooResponse = await WooCommerce.get("products", {
+        per_page: perPage,
+        page,
+      });
+
+      const products = wooResponse.data || [];
+
+      if (!products.length) {
+        break;
+      }
+
+      for (const product of products) {
+        const payload = {
+          woo_product_id: product.id,
+          sku: product.sku || null,
+          name: product.name,
+          category: categoriesToString(product.categories),
+          daily_price: parsePrice(product.price),
+          image_url: product.images?.[0]?.src || null,
+          active: product.status === "publish",
+        };
+
+        const { data, error } = await supabase
+          .from("catalog_products")
+          .upsert(payload, { onConflict: "woo_product_id" })
+          .select()
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        imported.push(data);
+        totalImported += 1;
+      }
+
+      if (products.length < perPage) {
+        break;
+      }
+
       page += 1;
     }
 
@@ -218,7 +301,10 @@ app.get("/catalog/products", checkApiKey, async (req, res) => {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+
+    if (error) {
+      throw error;
+    }
 
     res.json({
       success: true,
@@ -234,6 +320,9 @@ app.get("/catalog/products", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// CLIENTI
+// -----------------------------------------------------------------------------
 app.post("/clients", checkApiKey, async (req, res) => {
   try {
     const { name, company, email, phone, vat_number, notes } = req.body;
@@ -251,7 +340,9 @@ app.post("/clients", checkApiKey, async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, created: data });
   } catch (error) {
@@ -277,7 +368,10 @@ app.get("/clients", checkApiKey, async (req, res) => {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, count: data.length, data });
   } catch (error) {
@@ -289,6 +383,9 @@ app.get("/clients", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// PROGETTI
+// -----------------------------------------------------------------------------
 app.post("/projects", checkApiKey, async (req, res) => {
   try {
     const { client_id, name, start_date, end_date, status, notes } = req.body;
@@ -315,7 +412,9 @@ app.post("/projects", checkApiKey, async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, created: data });
   } catch (error) {
@@ -334,7 +433,9 @@ app.get("/projects", checkApiKey, async (req, res) => {
       .select("*, clients(*)")
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, count: data.length, data });
   } catch (error) {
@@ -346,6 +447,9 @@ app.get("/projects", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// SERIALI
+// -----------------------------------------------------------------------------
 app.post("/serial-numbers", checkApiKey, async (req, res) => {
   try {
     const { product_id, serial_code, status, notes } = req.body;
@@ -370,7 +474,9 @@ app.post("/serial-numbers", checkApiKey, async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, created: data });
   } catch (error) {
@@ -396,7 +502,10 @@ app.get("/serial-numbers", checkApiKey, async (req, res) => {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, count: data.length, data });
   } catch (error) {
@@ -408,6 +517,9 @@ app.get("/serial-numbers", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// PRENOTAZIONI
+// -----------------------------------------------------------------------------
 app.post("/bookings", checkApiKey, async (req, res) => {
   try {
     const { project_id, serial_id, start_date, end_date, status } = req.body;
@@ -427,7 +539,9 @@ app.post("/bookings", checkApiKey, async (req, res) => {
       .lt("start_date", end_date)
       .gt("end_date", start_date);
 
-    if (conflictError) throw conflictError;
+    if (conflictError) {
+      throw conflictError;
+    }
 
     if (conflicts.length > 0) {
       return res.status(409).json({
@@ -451,7 +565,9 @@ app.post("/bookings", checkApiKey, async (req, res) => {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, created: data });
   } catch (error) {
@@ -470,7 +586,9 @@ app.get("/bookings", checkApiKey, async (req, res) => {
       .select("*, projects(*), serial_numbers(*, catalog_products(*))")
       .order("start_date", { ascending: true });
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, count: data.length, data });
   } catch (error) {
@@ -482,6 +600,9 @@ app.get("/bookings", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// DISPONIBILITA
+// -----------------------------------------------------------------------------
 app.post("/availability/check", checkApiKey, async (req, res) => {
   try {
     const { product_id, start_date, end_date } = req.body;
@@ -499,16 +620,23 @@ app.post("/availability/check", checkApiKey, async (req, res) => {
       .eq("product_id", product_id)
       .eq("status", "available");
 
-    if (serialError) throw serialError;
+    if (serialError) {
+      throw serialError;
+    }
+
+    const serialIds = serials.map((serial) => serial.id);
 
     const { data: overlappingBookings, error: bookingError } = await supabase
       .from("bookings")
       .select("*")
+      .in("serial_id", serialIds.length ? serialIds : ["00000000-0000-0000-0000-000000000000"])
       .neq("status", "cancelled")
       .lt("start_date", end_date)
       .gt("end_date", start_date);
 
-    if (bookingError) throw bookingError;
+    if (bookingError) {
+      throw bookingError;
+    }
 
     const bookedSerialIds = new Set(
       overlappingBookings.map((booking) => booking.serial_id)
@@ -537,6 +665,9 @@ app.post("/availability/check", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// PREVENTIVI
+// -----------------------------------------------------------------------------
 app.post("/quotes", checkApiKey, async (req, res) => {
   try {
     const { client_id, notes, items = [] } = req.body;
@@ -544,10 +675,12 @@ app.post("/quotes", checkApiKey, async (req, res) => {
     const quoteNumber = `Q-${Date.now()}`;
 
     let subtotal = 0;
+
     const quoteItems = items.map((item) => {
       const quantity = Number(item.quantity || 1);
       const unitPrice = Number(item.unit_price || 0);
       const totalPrice = quantity * unitPrice;
+
       subtotal += totalPrice;
 
       return {
@@ -578,7 +711,9 @@ app.post("/quotes", checkApiKey, async (req, res) => {
       .select()
       .single();
 
-    if (quoteError) throw quoteError;
+    if (quoteError) {
+      throw quoteError;
+    }
 
     let insertedItems = [];
 
@@ -593,7 +728,10 @@ app.post("/quotes", checkApiKey, async (req, res) => {
         .insert(rows)
         .select();
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
+
       insertedItems = data;
     }
 
@@ -618,7 +756,9 @@ app.get("/quotes", checkApiKey, async (req, res) => {
       .select("*, clients(*)")
       .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      throw error;
+    }
 
     res.json({ success: true, count: data.length, data });
   } catch (error) {
@@ -640,14 +780,18 @@ app.get("/quotes/:id", checkApiKey, async (req, res) => {
       .eq("id", id)
       .single();
 
-    if (quoteError) throw quoteError;
+    if (quoteError) {
+      throw quoteError;
+    }
 
     const { data: items, error: itemsError } = await supabase
       .from("quote_items")
       .select("*, catalog_products(*)")
       .eq("quote_id", id);
 
-    if (itemsError) throw itemsError;
+    if (itemsError) {
+      throw itemsError;
+    }
 
     res.json({
       success: true,
@@ -665,6 +809,9 @@ app.get("/quotes/:id", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// RENTMAN - ENDPOINT ESISTENTI
+// -----------------------------------------------------------------------------
 app.get("/equipment", checkApiKey, async (req, res) => {
   try {
     const response = await rentman.get("/equipment", {
@@ -718,8 +865,13 @@ app.get("/equipment/search", checkApiKey, async (req, res) => {
       total = response.data?.itemCount ?? total;
       allItems.push(...items);
 
-      if (items.length < pageSize) break;
-      if (typeof total === "number" && allItems.length >= total) break;
+      if (items.length < pageSize) {
+        break;
+      }
+
+      if (typeof total === "number" && allItems.length >= total) {
+        break;
+      }
 
       offset += pageSize;
     }

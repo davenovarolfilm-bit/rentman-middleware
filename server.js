@@ -1321,6 +1321,83 @@ app.get("/activity-log", checkApiKey, async (req, res) => {
     });
   }
 });
+// -----------------------------------------------------------------------------
+// ACTIVITY SUMMARY / REPORT OPERATIVI
+// -----------------------------------------------------------------------------
+app.get("/activity-summary", checkApiKey, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || "20", 10), 100);
+
+    const { data, error } = await supabase
+      .from("activity_summary")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      count: data.length,
+      data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Errore lettura activity summary",
+      details: error.message || error,
+    });
+  }
+});
+
+app.post("/activity-summary", checkApiKey, async (req, res) => {
+  try {
+    const {
+      period_start,
+      period_end,
+      title,
+      summary,
+      source = "ChatGPT",
+      created_by = "Dave",
+    } = req.body;
+
+    if (!title || !summary) {
+      return res.status(400).json({
+        success: false,
+        error: "Campi obbligatori mancanti: title e summary",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("activity_summary")
+      .insert([
+        {
+          period_start,
+          period_end,
+          title,
+          summary,
+          source,
+          created_by,
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      message: "Report attività salvato",
+      created: data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Errore creazione activity summary",
+      details: error.message || error,
+    });
+  }
+});
 app.listen(PORT, () => {
   console.log("Middleware Rentman + WooCommerce + Supabase attivo su porta", PORT);
 });

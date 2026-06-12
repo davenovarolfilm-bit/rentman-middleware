@@ -1230,24 +1230,48 @@ app.get("/catalog/set-stock", async (req, res) => {
       });
     }
 
-    const { data, error } = await supabase
-      .from("catalog_products")
-      .update({
-        stock_quantity: stockQuantity,
-        available_quantity: stockQuantity,
-        stock_type: type,
-      })
-      .eq("id", id)
-      .select()
-      .single();
+const { data: oldProduct, error: oldError } = await supabase
+  .from("catalog_products")
+  .select("*")
+  .eq("id", id)
+  .single();
 
-    if (error) throw error;
+if (oldError) throw oldError;
 
-    res.json({
-      success: true,
-      message: "Stock aggiornato correttamente",
-      updated: data,
-    });
+const { data, error } = await supabase
+  .from("catalog_products")
+  .update({
+    stock_quantity: stockQuantity,
+    available_quantity: stockQuantity,
+    stock_type: type,
+  })
+  .eq("id", id)
+  .select()
+  .single();
+
+if (error) throw error;
+
+await supabase.from("activity_log").insert([
+  {
+    action: "stock_update",
+    entity_type: "product",
+    entity_id: id,
+    product_id: id,
+    product_name: data.name,
+    old_value: String(oldProduct.stock_quantity),
+    new_value: String(stockQuantity),
+    user_name: "Dave",
+    source: "ChatGPT",
+    notes: `Stock aggiornato da ${oldProduct.stock_quantity} a ${stockQuantity}`,
+  },
+]);
+
+res.json({
+  success: true,
+  message: "Stock aggiornato correttamente",
+  updated: data,
+  logged: true,
+});
   } catch (error) {
     res.status(500).json({
       success: false,

@@ -1200,6 +1200,63 @@ app.put("/catalog/products/:id/stock", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// TEST RAPIDO AGGIORNAMENTO STOCK DA BROWSER
+// -----------------------------------------------------------------------------
+app.get("/catalog/set-stock", async (req, res) => {
+  try {
+    const { id, qty, type = "quantity" } = req.query;
+
+    if (!id || qty === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: "Parametri obbligatori mancanti: id e qty",
+      });
+    }
+
+    const stockQuantity = Number(qty);
+
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      return res.status(400).json({
+        success: false,
+        error: "qty deve essere un numero intero maggiore o uguale a 0",
+      });
+    }
+
+    if (!["quantity", "serial"].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        error: "type deve essere quantity oppure serial",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("catalog_products")
+      .update({
+        stock_quantity: stockQuantity,
+        available_quantity: stockQuantity,
+        stock_type: type,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      message: "Stock aggiornato correttamente",
+      updated: data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Errore aggiornamento stock",
+      details: error.message || error,
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log("Middleware Rentman + WooCommerce + Supabase attivo su porta", PORT);
 });

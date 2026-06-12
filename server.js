@@ -1117,6 +1117,89 @@ app.post("/import-woocommerce-products", checkApiKey, async (req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// STOCK / QUANTITA CATALOGO
+// -----------------------------------------------------------------------------
+app.put("/catalog/products/:id/stock", checkApiKey, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      stock_quantity,
+      available_quantity,
+      stock_type = "quantity",
+    } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: "Parametro obbligatorio mancante: id prodotto",
+      });
+    }
+
+    if (stock_quantity === undefined || stock_quantity === null) {
+      return res.status(400).json({
+        success: false,
+        error: "Campo obbligatorio mancante: stock_quantity",
+      });
+    }
+
+    const stockQuantity = Number(stock_quantity);
+
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      return res.status(400).json({
+        success: false,
+        error: "stock_quantity deve essere un numero intero maggiore o uguale a 0",
+      });
+    }
+
+    const availableQuantity =
+      available_quantity === undefined || available_quantity === null
+        ? stockQuantity
+        : Number(available_quantity);
+
+    if (!Number.isInteger(availableQuantity) || availableQuantity < 0) {
+      return res.status(400).json({
+        success: false,
+        error: "available_quantity deve essere un numero intero maggiore o uguale a 0",
+      });
+    }
+
+    if (!["quantity", "serial"].includes(stock_type)) {
+      return res.status(400).json({
+        success: false,
+        error: "stock_type deve essere 'quantity' oppure 'serial'",
+      });
+    }
+
+    const { data, error } = await supabase
+      .from("catalog_products")
+      .update({
+        stock_quantity: stockQuantity,
+        available_quantity: availableQuantity,
+        stock_type,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    res.json({
+      success: true,
+      message: "Quantità prodotto aggiornata",
+      updated: data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Errore aggiornamento quantità prodotto",
+      details: error.message || error,
+    });
+  }
+});
+
 app.listen(PORT, () => {
   console.log("Middleware Rentman + WooCommerce + Supabase attivo su porta", PORT);
 });

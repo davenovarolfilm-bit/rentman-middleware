@@ -1281,6 +1281,46 @@ res.json({
   }
 });
 
+// -----------------------------------------------------------------------------
+// ACTIVITY LOG
+// -----------------------------------------------------------------------------
+app.get("/activity-log", checkApiKey, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
+    const productId = req.query.product_id || null;
+    const action = req.query.action || null;
+
+    let query = supabase
+      .from("activity_log")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (productId) {
+      query = query.eq("product_id", productId);
+    }
+
+    if (action) {
+      query = query.eq("action", action);
+    }
+
+    const { data, error } = await query;
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      count: data.length,
+      data,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Errore lettura activity log",
+      details: error.message || error,
+    });
+  }
+});
 app.listen(PORT, () => {
   console.log("Middleware Rentman + WooCommerce + Supabase attivo su porta", PORT);
 });

@@ -1,0 +1,598 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gestionale Novarolfilm API",
+    "version": "3.1.0",
+    "description": "API middleware per Gestionale Novarolfilm collegato a Supabase. Catalogo, stock, seriali, disponibilità, clienti, progetti, preventivi, activity log e report operativi."
+  },
+  "servers": [
+    {
+      "url": "https://rentman-middleware.onrender.com"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "healthCheck",
+        "summary": "Controlla se il middleware è online",
+        "responses": {
+          "200": {
+            "description": "Middleware online",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalog/products": {
+      "get": {
+        "operationId": "searchCatalogProducts",
+        "summary": "Cerca prodotti nel catalogo operativo Supabase",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Testo da cercare nel nome prodotto",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista prodotti catalogo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "type": "integer"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalog/products/{id}/stock": {
+      "put": {
+        "operationId": "updateCatalogProductStock",
+        "summary": "Aggiorna stock e disponibilità prodotto",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ID prodotto nella tabella catalog_products",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "stock_quantity"
+                ],
+                "properties": {
+                  "stock_quantity": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "available_quantity": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "stock_type": {
+                    "type": "string",
+                    "enum": [
+                      "quantity",
+                      "serial"
+                    ],
+                    "default": "quantity"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Stock aggiornato"
+          }
+        }
+      }
+    },
+    "/serial-numbers": {
+      "get": {
+        "operationId": "getSerialNumbers",
+        "summary": "Legge seriali o unità virtuali",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "description": "ID prodotto catalog_products",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista seriali"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createSerialNumber",
+        "summary": "Crea seriale o unità virtuale",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "product_id",
+                  "serial_code"
+                ],
+                "properties": {
+                  "product_id": {
+                    "type": "string"
+                  },
+                  "serial_code": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "default": "available"
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Seriale creato"
+          }
+        }
+      }
+    },
+    "/availability/check": {
+      "post": {
+        "operationId": "checkAvailability",
+        "summary": "Controlla disponibilità serializzata per intervallo date",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "product_id",
+                  "start_date",
+                  "end_date"
+                ],
+                "properties": {
+                  "product_id": {
+                    "type": "string"
+                  },
+                  "start_date": {
+                    "type": "string",
+                    "description": "Data in formato YYYY-MM-DD"
+                  },
+                  "end_date": {
+                    "type": "string",
+                    "description": "Data in formato YYYY-MM-DD"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Disponibilità calcolata"
+          }
+        }
+      }
+    },
+    "/bookings": {
+      "get": {
+        "operationId": "getBookings",
+        "summary": "Legge prenotazioni",
+        "responses": {
+          "200": {
+            "description": "Lista prenotazioni"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createBooking",
+        "summary": "Crea prenotazione",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "serial_id",
+                  "start_date",
+                  "end_date"
+                ],
+                "properties": {
+                  "project_id": {
+                    "type": "string"
+                  },
+                  "serial_id": {
+                    "type": "string"
+                  },
+                  "start_date": {
+                    "type": "string"
+                  },
+                  "end_date": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "default": "reserved"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Prenotazione creata"
+          },
+          "409": {
+            "description": "Seriale non disponibile nelle date richieste"
+          }
+        }
+      }
+    },
+    "/clients": {
+      "get": {
+        "operationId": "getClients",
+        "summary": "Cerca o legge clienti",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Testo da cercare in nome, azienda o email",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista clienti"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createClient",
+        "summary": "Crea cliente",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "company": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "phone": {
+                    "type": "string"
+                  },
+                  "vat_number": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cliente creato"
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "operationId": "getProjects",
+        "summary": "Legge progetti",
+        "responses": {
+          "200": {
+            "description": "Lista progetti"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProject",
+        "summary": "Crea progetto",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "start_date": {
+                    "type": "string"
+                  },
+                  "end_date": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "default": "draft"
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Progetto creato"
+          }
+        }
+      }
+    },
+    "/quotes": {
+      "get": {
+        "operationId": "getQuotes",
+        "summary": "Legge preventivi",
+        "responses": {
+          "200": {
+            "description": "Lista preventivi"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createQuote",
+        "summary": "Crea preventivo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "client_id": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "product_id": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "quantity": {
+                          "type": "number"
+                        },
+                        "unit_price": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preventivo creato"
+          }
+        }
+      }
+    },
+    "/quotes/{id}": {
+      "get": {
+        "operationId": "getQuoteById",
+        "summary": "Legge dettaglio preventivo",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "ID preventivo",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dettaglio preventivo"
+          }
+        }
+      }
+    },
+    "/activity-log": {
+      "get": {
+        "operationId": "getActivityLog",
+        "summary": "Legge memoria operativa del gestionale",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "product_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista attività"
+          }
+        }
+      }
+    },
+    "/activity-summary": {
+      "get": {
+        "operationId": "getActivitySummary",
+        "summary": "Legge report operativi salvati",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista report operativi"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createActivitySummary",
+        "summary": "Salva report operativo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "summary"
+                ],
+                "properties": {
+                  "period_start": {
+                    "type": "string"
+                  },
+                  "period_end": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "default": "ChatGPT"
+                  },
+                  "created_by": {
+                    "type": "string",
+                    "default": "Dave"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Report operativo salvato"
+          }
+        }
+      }
+    }
+  }
+}

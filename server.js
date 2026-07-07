@@ -5,6 +5,7 @@ const axios = require("axios");
 const cors = require("cors");
 const WooCommerceRestApi = require("@woocommerce/woocommerce-rest-api").default;
 const { createClient } = require("@supabase/supabase-js");
+const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -101,6 +102,10 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
+
+app.get("/openapi.json", (req, res) => {
+  res.sendFile(path.join(__dirname, "openapi.json"));
+});
 
 app.get("/health", (req, res) => {
   res.json({
